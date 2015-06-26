@@ -1,12 +1,6 @@
-/nez/
-/AtomType.class
-/LinkLog.class
-/RelationalData.class
-/Type.class
-/TypeCommand.class
-/UnionType.class
 /ABORT.class
 /ANY.class
+/AtomType.class
 /BasicBlock.class
 /CALL.class
 /CHARRANGE.class
@@ -29,6 +23,7 @@
 /LOADp1.class
 /LOADp2.class
 /LOADp3.class
+/LinkLog.class
 /MAPPEDCHOICE.class
 /MatchingInstruction.class
 /Module.class
@@ -56,6 +51,7 @@
 /RNode.class
 /RelationCommand.class
 /RelationExtracker.class
+/RelationalData.class
 /SETendp.class
 /STOREflag.class
 /STOREo.class
@@ -67,9 +63,13 @@
 /Schema.class
 /StackOperateInstruction.class
 /TAG.class
+/Type.class
+/TypeCommand.class
+/UnionType.class
 /VALUE.class
 /WordCount$Counter.class
 /WordCount.class
 /ZEROMORECHARRANGE.class
 /ZEROMORECHARSET.class
 /ZEROMOREWS.class
+/nez/
