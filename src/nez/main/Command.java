@@ -19,13 +19,16 @@ public abstract class Command {
 	public final static String License = "BSD-License Open Source";
 
 	public final static void main(String[] args) {
-		CommandConfigure config = new CommandConfigure();
-		config.parseCommandOption(args);
-		Command com = config.getCommand();
-		com.exec(config);
+		CommandContext c = new CommandContext(args);
+		Command com = c.getCommand();
+		com.exec(c);
 	}
 
 	public abstract void exec(CommandConfigure config);
+
+	public abstract String getDesc();
+
+	public abstract void exec(CommandContext config);
 
 	public final static void displayVersion() {
 		ConsoleUtils.println(ProgName + "-" + Version + " (" + CodeName

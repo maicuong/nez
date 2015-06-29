@@ -3,12 +3,13 @@ package nez.lang;
 import java.util.List;
 import java.util.TreeMap;
 
+import nez.NezOption;
 import nez.SourceContext;
 import nez.ast.CommonTree;
-import nez.ast.CommonTreeFactory;
-import nez.ast.ParsingFactory;
+import nez.ast.CommonTreeTransducer;
+import nez.ast.TreeTransducer;
 import nez.main.Command;
-import nez.main.Recorder;
+import nez.main.NezProfier;
 import nez.main.Verbose;
 import nez.util.ConsoleUtils;
 import nez.util.UFlag;
@@ -29,11 +30,12 @@ public class Grammar {
 	UMap<Production>           productionMap;
 	TreeMap<String, Boolean>   conditionMap;
 	
-	Grammar(Production start, int option) {
+	Grammar(Production start, NezOption option) {
 		this.start = start;
 		this.productionList = new UList<Production>(new Production[4]);
 		this.productionMap = new UMap<Production>();
 		this.setOption(option);
+		
 		conditionMap = start.isConditional() ? new TreeMap<String, Boolean>() : null; 
 		analyze(start, conditionMap);
 		if(conditionMap != null) {
@@ -44,8 +46,8 @@ public class Grammar {
 			this.productionMap = new UMap<Production>();
 			analyze(this.start, conditionMap);
 		}
-	}
-
+	}	
+	
 	public final Production getStartProduction() {
 		return this.start;
 	}
@@ -76,30 +78,45 @@ public class Grammar {
 		}
 	}
 	
+	/* --------------------------------------------------------------------- */
+	/* profiler */
+
+	private NezProfier prof = null;
 	
+	public void setProfiler(NezProfier prof) {
+		this.prof = prof;
+		if(prof != null) {
+			this.compile();
+			prof.setFile("G.File", this.start.getGrammarFile().getURN());
+			prof.setCount("G.Production", this.productionMap.size());
+			prof.setCount("G.Instruction", this.InstructionSize);
+			prof.setCount("G.MemoPoint", this.memoPointSize);
+		}
+	}
+
+	public NezProfier getProfiler() {
+		return this.prof;
+	}
+
+	public void logProfiler() {
+		if(prof != null) {
+			prof.log();
+		}
+	}
 
 	/* --------------------------------------------------------------------- */
 	/* memoization configuration */
 	
 	private Instruction compiledCode = null;
-	private int option;
+	private NezOption option;
 	
-	private void setOption (int option) {
-		if(this.option != option) {
-			this.compiledCode = null; // recompile
-		}
-		if(UFlag.is(option, PackratParsing) && this.defaultMemoTable == null) {
-			this.defaultMemoTable = MemoTable.newElasticTable(0, 0, 0);
-		}
+	public final NezOption getNezOption() {
+		return this.option;
+	}
+
+	private void setOption (NezOption option) {
 		this.option = option;
-	}
-
-	public final void enable(int option) {
-		setOption(this.option | option);
-	}
-
-	public final void disable(int option) {
-		setOption(UFlag.unsetFlag(this.option, option));
+		this.compiledCode = null;
 	}
 
 	private MemoTable defaultMemoTable;
@@ -146,13 +163,17 @@ public class Grammar {
 		boolean matched;
 		Instruction pc;
 		s.initJumpStack(64, getMemoTable(s));
-		if(this.option == Grammar.DebugOption) { // FIXME
-			NezCompiler c = new NezCompiler1(this.option);
-			pc = c.compile(this).startPoint;
-			NezDebugger debugger = new NezDebugger(this, pc, s);
-			matched = debugger.exec();
-		}
+// REAL FIXME
+//		if(this.option == NezOption.DebugOption) { // FIXME
+//			NezCompiler c = new NezCompiler1(this.option);
+//			pc = c.compile(this).startPoint;
+//			NezDebugger debugger = new NezDebugger(this, pc, s);
+//			matched = debugger.exec();
+//		}
 		pc = this.compile();
+		if(prof != null) {
+			s.startProfiling(prof);
+		}
 		if(Verbose.Debug) {
 			matched = Machine.debug(pc, s);
 		}
@@ -161,6 +182,9 @@ public class Grammar {
 		}
 		if(matched) {
 			s.newTopLevelNode();
+		}
+		if(prof != null) {
+			s.doneProfiling(prof);
 		}
 		return matched;
 	}
@@ -175,7 +199,7 @@ public class Grammar {
 		return false;
 	}
 
-	public Object parse(SourceContext sc, ParsingFactory treeFactory) {
+	public Object parse(SourceContext sc, TreeTransducer treeFactory) {
 		long startPosition = sc.getPosition();
 		sc.setFactory(treeFactory);
 		if(!this.match(sc)) {
@@ -192,23 +216,12 @@ public class Grammar {
 	}
 
 	public final CommonTree parse(SourceContext sc) {
-		return (CommonTree)this.parse(sc, new CommonTreeFactory());
+		return (CommonTree)this.parse(sc, new CommonTreeTransducer());
 	}
 
 	public final CommonTree parseAST(String str) {
 		SourceContext sc = SourceContext.newStringContext(str);
-		return (CommonTree)this.parse(sc, new CommonTreeFactory());
-	}
-
-	public final void record(Recorder rec) {
-		if(rec != null) {
-			this.enable(Grammar.Profiling);
-			this.compile();
-			rec.setFile("G.File", this.start.getNameSpace().getURN());
-			rec.setCount("G.NonTerminals", this.productionMap.size());
-			rec.setCount("G.Instruction", this.InstructionSize);
-			rec.setCount("G.MemoPoint", this.memoPointSize);
-		}
+		return (CommonTree)this.parse(sc, new CommonTreeTransducer());
 	}
 
 	public final void verboseMemo() {
@@ -221,86 +234,6 @@ public class Grammar {
 			ConsoleUtils.println("");
 		}
 	}
-	
-	/* --------------------------------------------------------------------- */
-	/* Grammar Option */
-	
-	public final static int ClassicMode = 1;
-	public final static int ASTConstruction = 1 << 1;
-	public final static int PackratParsing  = 1 << 2;
-	public final static int Optimization    = 1 << 3;
-	public final static int Specialization  = 1 << 4;
-	public final static int CommonPrefix    = 1 << 5;
-	public final static int Inlining        = 1 << 6;
-	public final static int Prediction      = 1 << 7;
-	public final static int DFA             = 1 << 8;
-	public final static int Tracing         = 1 << 9;	
-	public final static int Binary          = 1 << 10;
-	public final static int Utf8            = 1 << 11;	
-	public final static int Profiling       = 1 << 12;
 
-	public final static int DefaultOption = ASTConstruction | PackratParsing | Optimization 
-											| Specialization | Inlining | CommonPrefix | Prediction /* | Tracing */;
-	public final static int RegexOption = ASTConstruction | PackratParsing | Optimization
-											| Specialization | Prediction /* | Tracing */;
-	public final static int SafeOption = ASTConstruction | Optimization;
-	public final static int ExampleOption = Optimization | Specialization | Inlining | CommonPrefix | Prediction;
-	public final static int DebugOption = ASTConstruction;
-	
-	public final static int mask(int m) {
-		return Binary & m;
-	}
-	
-	public final static String stringfyOption(int option, String delim) {
-		StringBuilder sb = new StringBuilder();
-		if(UFlag.is(option, Grammar.ClassicMode)) {
-			sb.append(delim);
-			sb.append("classic");
-		}
-		if(UFlag.is(option, Grammar.ASTConstruction)) {
-			sb.append(delim);
-			sb.append("ast");
-		}
-		if(UFlag.is(option, Grammar.PackratParsing)) {
-			sb.append(delim);
-			sb.append("memo");
-		}
-		if(UFlag.is(option, Grammar.Optimization)) {
-			sb.append(delim);
-			sb.append("opt.");
-		}
-		if(UFlag.is(option, Grammar.Specialization)) {
-			sb.append(delim);
-			sb.append("spe.");
-		}
-		if(UFlag.is(option, Grammar.CommonPrefix)) {
-			sb.append(delim);
-			sb.append("com.");
-		}
-		if(UFlag.is(option, Grammar.Inlining)) {
-			sb.append(delim);
-			sb.append("inline");
-		}
-		if(UFlag.is(option, Grammar.Prediction)) {
-			sb.append(delim);
-			sb.append("pdt.");
-		}
-		if(UFlag.is(option, Grammar.Tracing)) {
-			sb.append(delim);
-			sb.append("tracing");
-		}
-		if(UFlag.is(option, Grammar.DFA)) {
-			sb.append(delim);
-			sb.append("dfa");
-		}
-		if(UFlag.is(option, Grammar.Profiling)) {
-			sb.append(delim);
-			sb.append("prof");
-		}
-		String s = sb.toString();
-		if(s.length() > 0) {
-			return s.substring(delim.length());
-		}
-		return s;
-	}
+
 }

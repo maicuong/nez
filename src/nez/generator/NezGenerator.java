@@ -4,6 +4,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 
+import nez.NezOption;
 import nez.lang.And;
 import nez.lang.AnyChar;
 import nez.lang.Block;
@@ -42,11 +43,11 @@ public abstract class NezGenerator extends NezEncoder {
 	public abstract String getDesc();
 
 	public NezGenerator() {
-		super(0);
+		super(NezOption.newDefaultOption());
 		this.file = null;
 	}
 
-	protected void setOption(int option) {
+	protected void setOption(NezOption grammar) {
 		this.option = option;
 	}
 
@@ -168,7 +169,7 @@ public abstract class NezGenerator extends NezEncoder {
 	// AST Construction
 
 	public Instruction encodeLink(Link p, Instruction next, Instruction failjump) {
-		if(is(Grammar.ASTConstruction)) {
+		if(option.enabledASTConstruction) {
 			this.visitLink(p);
 		}
 		else {
@@ -178,28 +179,28 @@ public abstract class NezGenerator extends NezEncoder {
 	}
 
 	public Instruction encodeNew(New p, Instruction next) {
-		if(is(Grammar.ASTConstruction)) {
+		if(option.enabledASTConstruction) {
 			this.visitNew(p);
 		}
 		return null;
 	}
 
 	public Instruction encodeCapture(Capture p, Instruction next) {
-		if(is(Grammar.ASTConstruction)) {
+		if(option.enabledASTConstruction) {
 			this.visitCapture(p);
 		}
 		return null;
 	}
 
 	public Instruction encodeTagging(Tagging p, Instruction next) {
-		if(is(Grammar.ASTConstruction)) {
+		if(option.enabledASTConstruction) {
 			this.visitTagging(p);
 		}
 		return null;
 	}
 
 	public Instruction encodeReplace(Replace p, Instruction next) {
-		if(is(Grammar.ASTConstruction)) {
+		if(option.enabledASTConstruction) {
 			this.visitReplace(p);
 		}
 		return null;
@@ -299,7 +300,7 @@ public abstract class NezGenerator extends NezEncoder {
 
 	// ---------------------------------------------------------------------
 
-	public void generate(Grammar grammar, int option, String fileName) {
+	public void generate(Grammar grammar, NezOption option, String fileName) {
 		this.setOption(option);
 		this.setOutputFile(fileName);
 		makeHeader(grammar);

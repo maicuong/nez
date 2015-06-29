@@ -3,6 +3,7 @@ package nez.main;
 import java.io.IOException;
 import java.util.HashMap;
 
+import nez.NezOption;
 import nez.SourceContext;
 import nez.ast.CommonTree;
 import nez.ast.CommonTreeWriter;
@@ -11,13 +12,13 @@ import nez.generator.NezGenerator;
 import nez.generator.NezGrammarGenerator;
 import nez.lang.Formatter;
 import nez.lang.Grammar;
-import nez.lang.NameSpace;
+import nez.lang.GrammarFile;
 import nez.lang.NezParser;
 import nez.lang.Production;
 import nez.util.ConsoleUtils;
 import nez.util.UList;
 
-public class NezInteractiveParser extends Command {
+public class LCshell extends Command {
 	@Override
 	public final String getDesc() {
 		return "starts an interactive parser";
@@ -28,11 +29,12 @@ public class NezInteractiveParser extends Command {
 	int linenum = 0;
 	
 	@Override
-	public void exec(CommandConfigure config) {
+	public void exec(CommandContext config) {
 		Command.displayVersion();
-		NameSpace ns = config.getNameSpace(true);
-		ConsoleUtils.addCompleter(ns.getNonterminalList());
-		int option = config.GrammarOption;
+		GrammarFile gfile = config.getGrammarFile(true);
+		ConsoleUtils.addCompleter(gfile.getNonterminalList());
+		NezOption option = config.getNezOption();
+		
 		while(readLine(">>> ")) {
 			if((command != null && command.equals(""))) {
 				continue;
@@ -40,17 +42,17 @@ public class NezInteractiveParser extends Command {
 //			System.out.println("command: " + command);
 //			System.out.println("text: " + text);
 			if(command == null) {
-				defineProduction(ns, text);
+				defineProduction(gfile, text);
 				continue;
 			}
-			if(text != null && GeneratorLoader.supportedGenerator(command)) {
-				Grammar g = getGrammar(ns, text);
+			if(text != null && GeneratorLoader.isSupported(command)) {
+				Grammar g = getGrammar(gfile, text);
 				if(g != null) {
 					execCommand(command, g, option);
 				}
 				continue;
 			}
-			Grammar g = getGrammar(ns, command);
+			Grammar g = getGrammar(gfile, command);
 			if(g == null) {
 				continue;
 			}
@@ -69,8 +71,8 @@ public class NezInteractiveParser extends Command {
 				}
 				sc = null;
 				new CommonTreeWriter().transform(null, node);
-				if(Formatter.isSupported(ns, node)) {
-					ConsoleUtils.println("Formatted: " + Formatter.format(ns, node));
+				if(Formatter.isSupported(gfile, node)) {
+					ConsoleUtils.println("Formatted: " + Formatter.format(gfile, node));
 				}
 			}
 		}
@@ -146,7 +148,7 @@ public class NezInteractiveParser extends Command {
 		return true;
 	}
 
-	private Grammar getGrammar(NameSpace ns, String text) {
+	private Grammar getGrammar(GrammarFile ns, String text) {
 		String name = text.replace('\n', ' ').trim();
 		Grammar g = ns.newGrammar(name);
 		if(g == null) {
@@ -155,7 +157,7 @@ public class NezInteractiveParser extends Command {
 		return g;
 	}
 	
-	private void defineProduction(NameSpace ns, String text) {
+	private void defineProduction(GrammarFile ns, String text) {
 		//ConsoleUtils.println("--\n"+text+"--");
 		NezParser parser = new NezParser();
 		parser.eval(ns, "<stdio>", linenum, text);
@@ -171,8 +173,8 @@ public class NezInteractiveParser extends Command {
 		return cmdMap.containsKey(cmd);
 	}
 	
-	static void execCommand(String cmd, Grammar g, int option) {
-		NezGenerator gen = GeneratorLoader.newNezGenerator(cmd);
+	static void execCommand(String cmd, Grammar g, NezOption option) {
+		NezGenerator gen = GeneratorLoader.load(cmd);
 		gen.generate(g, option, null);
 		ConsoleUtils.println("");
 	}

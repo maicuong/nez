@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Stack;
 
+import nez.NezOption;
 import nez.lang.And;
 import nez.lang.AnyChar;
 import nez.lang.Block;
@@ -46,14 +47,14 @@ public class CParserGenerator extends ParserGenerator {
 	boolean isPackrat = false;
 	boolean PatternMatch = true;
 	int option = common;
-	static int plain = Grammar.ASTConstruction;
-	static int prediction = Grammar.ASTConstruction | Grammar.Prediction;
-	static int common = Grammar.ASTConstruction | Grammar.Prediction | Grammar.CommonPrefix;
+	static int plain = NezOption.ASTConstruction;
+	static int prediction = NezOption.ASTConstruction | NezOption.Prediction;
+	static int common = NezOption.ASTConstruction | NezOption.Prediction | NezOption.CommonPrefix;
 	GrammarOptimizer optimizer = new GrammarOptimizer(this.option);
 	int predictionCount = 0;
 
 	@Override
-	public void generate(Grammar grammar, int option, String fileName) {
+	public void generate(Grammar grammar, NezOption option, String fileName) {
 		this.setOption(option);
 		this.setOutputFile(fileName);
 		makeHeader(grammar);
@@ -134,7 +135,7 @@ public class CParserGenerator extends ParserGenerator {
 		this.closeBlock();
 		this.closeBlock();
 		this.closeBlock();
-		this.file.writeIndent("nez_log(ctx, argv[1], \"" + grammar.getProductionList().get(0).getNameSpace().getURN() + "\", "
+		this.file.writeIndent("nez_log(ctx, argv[1], \"" + grammar.getProductionList().get(0).getGrammarFile().getURN() + "\", "
 				+ grammar.getProductionList().size() + ", latency, \"" + this.getOption() + "\");");
 		this.file.writeIndent("return 0;");
 		this.file.writeIndent();
@@ -935,7 +936,7 @@ public class CParserGenerator extends ParserGenerator {
 	@Override
 	public void visitChoice(Choice e) {
 //		showChoiceInfo(e);
-		if((e.predictedCase != null && isPrediction && (UFlag.is(this.option, Grammar.Prediction)))) {
+		if((e.predictedCase != null && isPrediction && (UFlag.is(this.option, NezOption.Prediction)))) {
 			predictionCount++;
 			justPredictionCount++;
 			int fid = this.fid++;

@@ -1,21 +1,22 @@
 package nez.vm;
 
+import nez.NezOption;
 import nez.lang.Grammar;
 import nez.util.UFlag;
 import nez.util.UList;
 
 public abstract class NezCompiler extends NezEncoder {
 
-	public NezCompiler(int option) {
+	public NezCompiler(NezOption option) {
 		super(option);
 	}
 
 	protected final boolean enablePackratParsing() {
-		return UFlag.is(this.option, Grammar.PackratParsing);
+		return this.option.enabledMemoization;
 	}
 
 	protected final boolean enableASTConstruction() {
-		return UFlag.is(this.option, Grammar.ASTConstruction);
+		return this.option.enabledASTConstruction;
 	}
 	
 	public abstract NezCode compile(Grammar grammar);

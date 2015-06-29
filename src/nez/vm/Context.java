@@ -1,10 +1,10 @@
 package nez.vm;
 
-import nez.ast.ParsingFactory;
+import nez.ast.TreeTransducer;
 import nez.ast.Source;
 import nez.ast.Tag;
 import nez.lang.NezTag;
-import nez.main.Recorder;
+import nez.main.NezProfier;
 import nez.main.Verbose;
 import nez.util.ConsoleUtils;
 import nez.util.UList;
@@ -52,13 +52,13 @@ public abstract class Context implements Source {
 
 	/* PEG4d : AST construction */
 
-	private ParsingFactory treeFactory;
+	private TreeTransducer treeFactory;
 	private Object left;
 	void setLeftObject(Object left) {
 		this.left = left;
 	}
 
-	public final void setFactory(ParsingFactory treeFactory) {
+	public final void setFactory(TreeTransducer treeFactory) {
 		this.treeFactory = treeFactory;
 	}
 	
@@ -241,6 +241,9 @@ public abstract class Context implements Source {
 		this.failStackTop = 0;
 		this.usedStackTop = 1;
 		this.memoTable = memoTable;
+		if(this.treeFactory == null) {
+			treeFactory = new NothingConstructor();
+		}
 		//Verbose.println("MemoTable: " + this.memoTable.getClass().getSimpleName());
 	}
 
@@ -309,8 +312,8 @@ public abstract class Context implements Source {
 		assert(stackTop.debugFailStackFlag);
 		usedStackTop = failStackTop - 1;
 		failStackTop = stackTop.prevFailTop;
-		if(this.prof != null) {
-			this.prof.statBacktrack(stackTop.pos, this.pos);
+		if(this.lprof != null) {
+			this.lprof.statBacktrack(stackTop.pos, this.pos);
 		}
 		rollback(stackTop.pos);
 		if(stackTop.lastLog != this.lastAppendedLog) {
@@ -697,25 +700,28 @@ public abstract class Context implements Source {
 		return op.optional ? op.next : this.opIFail();
 	}
 	
-	// Profiling
-	private Prof prof;
-	public final void start(Recorder rec) {
-		if(rec != null) {
-			rec.setFile("I.File",  this.getResourceName());
-			rec.setCount("I.Size", this.length());
-			this.prof = new Prof();
-			this.prof.init(this.getPosition());
+	
+	// Profiling ------------------------------------------------------------
+	
+	private LocalProfiler lprof;
+	
+	public final void startProfiling(NezProfier prof) {
+		if(prof != null) {
+			prof.setFile("I.File",  this.getResourceName());
+			prof.setCount("I.Size", this.length());
+			this.lprof = new LocalProfiler();
+			this.lprof.init(this.getPosition());
 		}
 	}
 
-	public final void done(Recorder rec) {
-		if(rec != null) {
-			this.prof.parsed(rec, this.getPosition());
-			this.memoTable.record(rec);
+	public final void doneProfiling(NezProfier prof) {
+		if(prof != null) {
+			this.lprof.parsed(prof, this.getPosition());
+			this.memoTable.record(prof);
 		}
 	}
 
-	class Prof {
+	class LocalProfiler {
 		long startPosition = 0;
 		long startingNanoTime = 0;
 		long endingNanoTime   = 0;
@@ -740,12 +746,12 @@ public abstract class Context implements Source {
 			this.BacktrackHistgrams = new int[32];
 		}
 		
-		void parsed(Recorder rec, long consumed) {
+		void parsed(NezProfier rec, long consumed) {
 			consumed -= this.startPosition;
 			this.endingNanoTime = System.nanoTime();
-			Recorder.recordLatencyMS(rec, "P.Latency", startingNanoTime, endingNanoTime);
+			NezProfier.recordLatencyMS(rec, "P.Latency", startingNanoTime, endingNanoTime);
 			rec.setCount("P.Consumed", consumed);
-			Recorder.recordThroughputKPS(rec, "P.Throughput", consumed, startingNanoTime, endingNanoTime);
+			NezProfier.recordThroughputKPS(rec, "P.Throughput", consumed, startingNanoTime, endingNanoTime);
 			rec.setRatio("P.Failure", this.FailureCount, consumed);
 			rec.setRatio("P.Backtrack", this.BacktrackCount, consumed);
 			rec.setRatio("P.BacktrackLength", this.BacktrackLength, consumed);
@@ -783,7 +789,6 @@ public abstract class Context implements Source {
 			int n = (int)(Math.log(len) / Math.log(2.0));
 			BacktrackHistgrams[n] += 1;
 		}
-
 	}
 	
 }
@@ -822,5 +827,22 @@ class OperationLog {
 			return "["+id()+"] leftnew<pos=" + this.pos + "," + this.value + ">";
 		}
 		return "["+id()+"] nop";
+	}
+}
+
+class NothingConstructor extends TreeTransducer {
+	@Override
+	public Object newNode(Tag tag, Source s, long spos, long epos, int size, Object value) {
+		return null;
+	}
+	@Override
+	public void link(Object node, int index, Object child) {
+	}
+	@Override
+	public Object commit(Object node) {
+		return null;
+	}
+	@Override
+	public void abort(Object node) {
 	}
 }
