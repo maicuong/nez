@@ -1,11 +1,12 @@
+/*
+ *ruby.nez
+ *author : Mai MaiCuong
+*/
 
 File
     = (EOS? _)* CompleteStatement
 
 //-----------------------------------------
-//EOS
-//-----------------------------------------
-
 EOS
     = _ ';'
     / _ LINE_TERMINATOR
@@ -13,8 +14,7 @@ EOS
     / __ EOF
 
 LINE_TERMINATOR
-    = '\r\n'
-    / [\n\r\u2028\u2029]
+    = [\n\r\u2028\u2029]
 
 COMMENT
     = '#' (!LINE_TERMINATOR .)*
@@ -34,9 +34,6 @@ EOF
 _
     = (SPACE)*
 
-
-//-------------------------------------------------------
-//CompleteStatement
 //-------------------------------------------------------
 
 
@@ -49,10 +46,13 @@ StatementOrBegin
     / '{' __ CompleteStatement __ '}'
     / DecoratorStatement
 
-InitializerStatement
-    = { "BEGIN" __ '{' __ @CompleteStatement __ '}' #Initializer }
+ InitializerStatement
+    = { 'BEGIN' __ '{' __ @CompleteStatement __ '}' #Initializer }
 
-DecoratorStatement
+ DecoratorStatement
+    [example: if true then 1 end while f]
+    [example: puts n += 1 while n < 10]
+    [example: tmp = input.read(4096) or break]
     = NoDecorationStatement {@ _ addDecorator _ @Expression }*
 
 NoDecorationStatement
@@ -65,16 +65,16 @@ AliasStatement
     = { "alias" _ @FunctionName _ @FunctionName #Alias }
 
 UndefStatement
-    = { "undef" (_ (@FunctionName / @Symbol))+ #Undef}
+    = { "undef" (_ (@FunctionName / @Symbol))+}
+
+FinalizerStatement
+    = { 'END' __ '{' __ @CompleteStatement __ '}' #Finalizer }
 
 Symbol
     = ":" _ { FUNCTION_NAME #Symbol }
     / ":" _ { VARIABLE_NAME #Symbol }
 
-FinalizerStatement
-    = { "END" __ '{' __ @CompleteStatement __ '}' #Finalizer }
-
-addDecorator
+ addDecorator
     = "if" #IfDecorator
     / "while" #WhileDecorator
     / "unless" #UnlessDecorator
@@ -87,15 +87,15 @@ Expression
     / ControlExpression
 
 MultipleLeftHandSideExpression
-    = "(" _ MultipleLeftHandSideExpression _ ")"
-    / { @LHSListItem (_ "," _ @LHSListItem)+ (_ "," _ @LHSExpandExpression)?  #MultipleLeftHandSideExpression }
-    / { @LHSListItem _ "," _ @LHSExpandExpression  #MultipleLeftHandSideExpression }
-    / { @LHSListItem (_ "," _ @LHSListItem)* _ ","  #MultipleLeftHandSideExpression }
+    = '(' _ MultipleLeftHandSideExpression _ ')'
+    / { @LHSListItem (_ ',' _ @LHSListItem)+ (_ ',' _ @LHSExpandExpression)? #MultipleLeftHandSideExpression }
+    / { @LHSListItem _ ',' _ @LHSExpandExpression #MultipleLeftHandSideExpression }
+    / { @LHSListItem (_ ',' _ @LHSListItem)* _ ',' #MultipleLeftHandSideExpression }
     / LHSExpandExpression
 
 LHSListItem
     = LeftHandSideExpression
-    / "(" __ MultipleLeftHandSideExpression __ ")"
+    / '(' __ MultipleLeftHandSideExpression __ ')'
 
 LeftHandSideExpression
     = PrimaryExpression {@ addLHSCall }+
@@ -104,13 +104,14 @@ LeftHandSideExpression
 PrimaryExpression
     = '(' __ CompleteStatement __ ')'
     / Literal
+    / HereDocument
     / ArrayLiteral
     / HashLiteral
     / LambdaExpression
     / Variable !(_[({])
     / PrimaryCallExpression
     / ConstantExpression
-    / StatementLikeExpression
+    / <if StatementAsPrimary> StatementLikeExpression
 
 Literal
     = NumericLiteral
@@ -168,7 +169,7 @@ DecimalLiteral
 OctalIntegerLiteral
     [example: 0]
     [example: 012]
-    = { '0' ([oO] OCT+ / OCT*)? #OctalInteger }
+    = { '0' ([oO] OCT+ / OCT*) #OctalInteger }
 
 OCT
     = [0-7_]
@@ -182,11 +183,13 @@ StringLiteral
     / '?'{ ('\\' ESCAPE_SEQUENCE) / !SPACE_OR_NEWLINE . #String }
 
 DOUBLE_STRING_CHARACTER
-    = !( ["] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
+    = !( ["] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
+
+SOURCE
+    = .
 
 ESCAPE_SEQUENCE
-    = '\\' / ["'bfnrtv] / OCTA_ESCAPE_SEQUENCE
-    / HEX_ESCAPE_SEQUENCE / UNICODE_ESCAPE_SEQUUENCE / LINE_TERMINATOR / .
+    = '\\' / ["'bfnrtv] / OCTA_ESCAPE_SEQUENCE / HEX_ESCAPE_SEQUENCE / UNICODE_ESCAPE_SEQUUENCE / LINE_TERMINATOR / .
 
 OCTA_ESCAPE_SEQUENCE
     = OCT OCT OCT
@@ -198,10 +201,10 @@ UNICODE_ESCAPE_SEQUUENCE
     = [uU] HEX4
 
 SINGLE_STRING_CHARACTER
-    = !( ['] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
+    = !( ['] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
 
 BACK_STRING_CHARACTER
-    = !( [`] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
+    = !( [`] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
 
 RegularExpressionLiteral
     [example: /.*(?=#[^\s]*$)/]
@@ -211,16 +214,19 @@ REGEX_BODY
     = REGEX_FIRST_CHAR REGEX_CHAR*
 
 REGEX_FIRST_CHAR
+    = REGEX_BACKSLASH_SEQUENCE / ![*\\/\x5b] REGEX_NON_TERMINATOR / REGEX_CLASS
+
+REGEX_BACKSLASH_SEQUENCE
     = '\\' REGEX_NON_TERMINATOR
-    / ![*\\/\x5b] REGEX_NON_TERMINATOR
-    / '[' REGEX_CLASS_CHAR* ']'
 
 REGEX_NON_TERMINATOR
-    = !LINE_TERMINATOR .
+    = !LINE_TERMINATOR SOURCE
+
+REGEX_CLASS
+    = '[' REGEX_CLASS_CHAR* ']'
 
 REGEX_CLASS_CHAR
-    = ![\x5d\\] REGEX_NON_TERMINATOR
-    / '\\' REGEX_NON_TERMINATOR
+    = ![\x5d\\] REGEX_NON_TERMINATOR / REGEX_BACKSLASH_SEQUENCE
 
 REGEX_CHAR
     = '*' / REGEX_FIRST_CHAR
@@ -231,7 +237,6 @@ REGEX_FLAGS
 ParcentNotation
     = { "%" [wWiI] PN_BODY #ParcentNotation }
     / { "%" [qQxrs]? PN_BODY #ParcentNotation }
-
 PN_BODY
     = PN_PAREN
     / PN_BRACE
@@ -243,6 +248,7 @@ PN_BODY
 PN_PAREN
     = '(' (PN_PAREN / ![()] .)* ')'
 
+
 PN_BRACE
     = '{' (PN_BRACE / ![{}] .)* '}'
 
@@ -251,6 +257,13 @@ PN_BRAKET
 
 PN_ANGLE
     = "<" (PN_ANGLE / ![<>] .)* ">"
+
+HereDocument
+    = { "<<" "-"? (["] ["]/ [']  [']/ [`]  [`]) (!HD_NEWLINE .)* HD_NEWLINE
+      ( (!HD_NEWLINE .)* HD_NEWLINE)*_  HD_NEWLINE  #HereDocument }
+
+HD_NEWLINE
+    = LINE_TERMINATOR
 
 ArrayLiteral
     [example: [1,2,3]]
@@ -412,12 +425,11 @@ RescueItem
     [example: rescue => b; 1;]
     [example: rescue a => b; 1;]
     = { "rescue" _ (@Args _)? ("=>" _ @LeftHandSideExpression _)? THEN __ @CompleteStatement #Rescue }
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ClassExpression
     [example: class Human; end]
     [example: class Human < Animal; end]
-    = { "class" __ @[0]Identifier (__ "<" __ @[1]BaseClass)? EOS __ @[2]CompleteStatement __ "end" #Class }
+    = { "class" __ @Identifier (__ "<" __ @BaseClass)? EOS __ @CompleteStatement __ "end" #Class }
 
 BaseClass
     = Expression
@@ -451,6 +463,8 @@ Singleton
     / TrueExpression
     / FalseExpression
     / '(' __ Expression __ ')'
+
+
 
 addLHSCall
     = '[' __ (@Args)? __ ']' #Indexer
@@ -517,7 +531,8 @@ addCmdArguments
     / @BlockArgument
 
 CmdArgs
-    = !"("  CallArgs
+    = !"(" <without StatementAsPrimary CallArgs >
+
 
 DoEndBlock
     [example: do |n| p n end]
@@ -535,7 +550,7 @@ BlockArgument
 BraceBlock
     [example: {|n| p n }]
     [example: {|a,b| }]
-    = { '{' __ ('|' __ (@[0]BlockVar)? __ '|' __)? (@[1]CompleteStatement)? __ '}' #BlockArgument }
+    = { '{' __ ('|' __ (@BlockVar)? __ '|' __)? (@CompleteStatement)? __ '}' #BlockArgument }
 
 OperationName2
     = { IDENTIFIER [!?] #Name }
@@ -567,7 +582,7 @@ CallArgs
     [bad-example: &b, *a]
     [bad-example: &b, 1]
     [bad-example: *a, 1]
-    = CallArgsBody
+    =  CallArgsBody
 
 CallArgsBody
     = { @Command #List }
@@ -755,7 +770,7 @@ LineExpression
 
 
 ConstantExpression
-    = { '::' _ @[1]Identifier #Name }
+    = { '::' _ @Identifier #Name }
 
 Identifier
     = !KEYWORD IdentifierName
@@ -790,9 +805,6 @@ DIGIT
 
 LHSExpandExpression
     = { '*' @LeftHandSideExpression #Sprat }
-
-
-
 
 MultipleRightHandSideExpression
     = { addArgs (_ ',' _ @ExpandExpression)? #MultipleRightHandSideExpression }
@@ -896,7 +908,6 @@ HEX
 "[]" = '[]'
 "[]=" = '[]='
 "(" = '('
-")" = ')'
 "=>" = '=>'
 "." = '.'
 "," = ','
@@ -943,6 +954,3 @@ HEX
 "then" = 'then' !W
 "true" = 'true' !W
 "undef" = 'undef' !W
-
-"BEGIN" = 'BEGIN' !W
-"END" = 'END' !W
