@@ -1,5 +1,4 @@
 require 'mathn.rb'
-
 class PrimePredicater
   def initialize
     @prime = Prime.new

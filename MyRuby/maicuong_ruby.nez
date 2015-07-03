@@ -1,36 +1,32 @@
+
 File
     = (EOS? _)* CompleteStatement
 
 //-----------------------------------------
+//EOS
+//-----------------------------------------
+
 EOS
     = _ ';'
     / _ LINE_TERMINATOR
-    / _ SINGLE_LINE_COMMENT LINE_TERMINATOR_SEQUENCE
+    / _ COMMENT LINE_TERMINATOR
     / __ EOF
 
 LINE_TERMINATOR
-    = [\n\r\u2028\u2029]
+    = '\r\n'
+    / [\n\r\u2028\u2029]
 
-SINGLE_LINE_COMMENT
+COMMENT
     = '#' (!LINE_TERMINATOR .)*
-
-LINE_TERMINATOR_SEQUENCE
-    = '\n' / '\r\n' / '\r'
 
 __
     = SPACE_OR_NEWLINE*
 
 SPACE_OR_NEWLINE
-    = SPACE / LINE_TERMINATOR_SEQUENCE / COMMENT
+    = SPACE / LINE_TERMINATOR / COMMENT
 
 SPACE
     = [\t\v\f \u00A0\uFEFF]
-
-COMMENT
-    = SINGLE_LINE_COMMENT
-    / '__END__' .*
-/////////////////////////
-
 
 EOF
     = !.
@@ -39,34 +35,25 @@ _
     = (SPACE)*
 
 
-
+//-------------------------------------------------------
+//CompleteStatement
 //-------------------------------------------------------
 
 
 CompleteStatement
-    = { @StatementOrBegin (EOS* _ @StatementOrBegin)+ EOS* _ #Block }
-    / StatementOrBegin EOS* _
+    = { @StatementOrBegin (EOS* _ @StatementOrBegin)* EOS* _ #Block }
     / EOS* _ { #Empty }
 
 StatementOrBegin
     = InitializerStatement
     / '{' __ CompleteStatement __ '}'
-    / Statement
+    / DecoratorStatement
 
- InitializerStatement
-    = { 'BEGIN' __ '{' __ @CompleteStatement __ '}' #Initializer }
+InitializerStatement
+    = { "BEGIN" __ '{' __ @CompleteStatement __ '}' #Initializer }
 
-
-
- Statement
-    = DecoratorStatement
-
-
- DecoratorStatement
-    [example: if true then 1 end while f]
-    [example: puts n += 1 while n < 10]
-    [example: tmp = input.read(4096) or break]
-    = <with Decorator NoDecorationStatement> {@ <if Decorator> _ addDecorator _ @Expression }*
+DecoratorStatement
+    = NoDecorationStatement {@ _ addDecorator _ @Expression }*
 
 NoDecorationStatement
     = AliasStatement
@@ -78,16 +65,16 @@ AliasStatement
     = { "alias" _ @FunctionName _ @FunctionName #Alias }
 
 UndefStatement
-    = { "undef" (_ (@FunctionName / @Symbol))+}
-
-FinalizerStatement
-    = { 'END' __ '{' __ @CompleteStatement __ '}' #Finalizer }
+    = { "undef" (_ (@FunctionName / @Symbol))+ #Undef}
 
 Symbol
     = ":" _ { FUNCTION_NAME #Symbol }
     / ":" _ { VARIABLE_NAME #Symbol }
 
- addDecorator
+FinalizerStatement
+    = { "END" __ '{' __ @CompleteStatement __ '}' #Finalizer }
+
+addDecorator
     = "if" #IfDecorator
     / "while" #WhileDecorator
     / "unless" #UnlessDecorator
@@ -100,42 +87,48 @@ Expression
     / ControlExpression
 
 MultipleLeftHandSideExpression
-    = '(' _ MultipleLeftHandSideExpression _ ')'
-    / { @LHSListItem (_ ',' _ @LHSListItem)+ (_ ',' _ @LHSExpandExpression)? #MultipleLeftHandSideExpression }
-    / { @LHSListItem _ ',' _ @LHSExpandExpression #MultipleLeftHandSideExpression }
-    / { @LHSListItem (_ ',' _ @LHSListItem)* _ ',' #MultipleLeftHandSideExpression }
+    = "(" _ MultipleLeftHandSideExpression _ ")"
+    / { @LHSListItem (_ "," _ @LHSListItem)+ (_ "," _ @LHSExpandExpression)?  #MultipleLeftHandSideExpression }
+    / { @LHSListItem _ "," _ @LHSExpandExpression  #MultipleLeftHandSideExpression }
+    / { @LHSListItem (_ "," _ @LHSListItem)* _ ","  #MultipleLeftHandSideExpression }
     / LHSExpandExpression
 
 LHSListItem
     = LeftHandSideExpression
-    / '(' __ MultipleLeftHandSideExpression __ ')'
+    / "(" __ MultipleLeftHandSideExpression __ ")"
 
 LeftHandSideExpression
-    = <with DoEndBlock PrimaryExpression> {@ addLHSCall }+
+    = PrimaryExpression {@ addLHSCall }+
     / PrimaryLHSExpression
 
 PrimaryExpression
-    = '(' __ <with StatementAsPrimary CompleteStatement> __ ')'
+    = '(' __ CompleteStatement __ ')'
     / Literal
-    / HereDocument
     / ArrayLiteral
     / HashLiteral
     / LambdaExpression
     / Variable !(_[({])
     / PrimaryCallExpression
     / ConstantExpression
-    / <if StatementAsPrimary> StatementLikeExpression
+    / StatementLikeExpression
 
 Literal
-    = NumericLiteral / StringLiteral / RegularExpressionLiteral / Symbol / ParcentNotation
+    = NumericLiteral
+    / StringLiteral
+    / RegularExpressionLiteral
+    / Symbol
+    / ParcentNotation
 
 NumericLiteral
     [example: 0x1F]
     [example: 0123]
     [example: 0.12]
     [example: 1234]
-    = HexIntegerLiteral / BinaryIntegerLiteral
-    / FloatingPointLiteral / DecimalLiteral / OctalIntegerLiteral
+    = HexIntegerLiteral
+    / BinaryIntegerLiteral
+    / FloatingPointLiteral
+    / DecimalLiteral
+    / OctalIntegerLiteral
 
 HexIntegerLiteral
     [example: 0xa12]
@@ -175,7 +168,7 @@ DecimalLiteral
 OctalIntegerLiteral
     [example: 0]
     [example: 012]
-    = { '0' ([oO] OCT+ / OCT*) #OctalInteger }
+    = { '0' ([oO] OCT+ / OCT*)? #OctalInteger }
 
 OCT
     = [0-7_]
@@ -189,13 +182,11 @@ StringLiteral
     / '?'{ ('\\' ESCAPE_SEQUENCE) / !SPACE_OR_NEWLINE . #String }
 
 DOUBLE_STRING_CHARACTER
-    = !( ["] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
-
-SOURCE
-    = .
+    = !( ["] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
 
 ESCAPE_SEQUENCE
-    = '\\' / ["'bfnrtv] / OCTA_ESCAPE_SEQUENCE / HEX_ESCAPE_SEQUENCE / UNICODE_ESCAPE_SEQUUENCE / LINE_TERMINATOR_SEQUENCE / .
+    = '\\' / ["'bfnrtv] / OCTA_ESCAPE_SEQUENCE
+    / HEX_ESCAPE_SEQUENCE / UNICODE_ESCAPE_SEQUUENCE / LINE_TERMINATOR / .
 
 OCTA_ESCAPE_SEQUENCE
     = OCT OCT OCT
@@ -207,10 +198,10 @@ UNICODE_ESCAPE_SEQUUENCE
     = [uU] HEX4
 
 SINGLE_STRING_CHARACTER
-    = !( ['] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
+    = !( ['] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
 
 BACK_STRING_CHARACTER
-    = !( [`] / '\\' / LINE_TERMINATOR ) SOURCE / '\\' ESCAPE_SEQUENCE
+    = !( [`] / '\\' / LINE_TERMINATOR ) . / '\\' ESCAPE_SEQUENCE
 
 RegularExpressionLiteral
     [example: /.*(?=#[^\s]*$)/]
@@ -220,19 +211,16 @@ REGEX_BODY
     = REGEX_FIRST_CHAR REGEX_CHAR*
 
 REGEX_FIRST_CHAR
-    = REGEX_BACKSLASH_SEQUENCE / ![*\\/\x5b] REGEX_NON_TERMINATOR / REGEX_CLASS
-
-REGEX_BACKSLASH_SEQUENCE
     = '\\' REGEX_NON_TERMINATOR
+    / ![*\\/\x5b] REGEX_NON_TERMINATOR
+    / '[' REGEX_CLASS_CHAR* ']'
 
 REGEX_NON_TERMINATOR
-    = !LINE_TERMINATOR SOURCE
-
-REGEX_CLASS
-    = '[' REGEX_CLASS_CHAR* ']'
+    = !LINE_TERMINATOR .
 
 REGEX_CLASS_CHAR
-    = ![\x5d\\] REGEX_NON_TERMINATOR / REGEX_BACKSLASH_SEQUENCE
+    = ![\x5d\\] REGEX_NON_TERMINATOR
+    / '\\' REGEX_NON_TERMINATOR
 
 REGEX_CHAR
     = '*' / REGEX_FIRST_CHAR
@@ -241,19 +229,19 @@ REGEX_FLAGS
     = [gimsy]*
 
 ParcentNotation
-    = { "%" [wWiI] <without PNSpace PN_BODY> #ParcentNotation }
+    = { "%" [wWiI] PN_BODY #ParcentNotation }
     / { "%" [qQxrs]? PN_BODY #ParcentNotation }
+
 PN_BODY
     = PN_PAREN
     / PN_BRACE
     / PN_BRAKET
     / PN_ANGLE
-    / <if PNSpace> ' ' (!' ' .)* ' '
-    / <if PNSpace> <def EON LINE_TERMINATOR_SEQUENCE> (!<isa EON> .)* <isa EON>
+    / ' ' (!' ' .)* ' '
+    / (!LINE_TERMINATOR .)*
 
 PN_PAREN
     = '(' (PN_PAREN / ![()] .)* ')'
-
 
 PN_BRACE
     = '{' (PN_BRACE / ![{}] .)* '}'
@@ -263,29 +251,6 @@ PN_BRAKET
 
 PN_ANGLE
     = "<" (PN_ANGLE / ![<>] .)* ">"
-
-HereDocument
-    = { "<<" "-"? (
-          ["] <def HereDocID IDENTIFIER> ["]
-        / ['] <def HereDocID IDENTIFIER> [']
-        / [`] <def HereDocID IDENTIFIER> [`]
-        / <def HereDocID IDENTIFIER>) (!HD_NEWLINE .)* HD_NEWLINE
-      (!(_ <isa HereDocID>) (!HD_NEWLINE .)* HD_NEWLINE)*
-      _ <isa HereDocID> HD_NEWLINE
-      #HereDocument
-    }/* / { "<<" (
-          ["] <def HereDocID IDENTIFIER> ["]
-        / ['] <def HereDocID IDENTIFIER> [']
-        / [`] <def HereDocID IDENTIFIER> [`]
-        / <def HereDocID IDENTIFIER>) HD_NEWLINE
-      (!<isa HereDocID> (!HD_NEWLINE .)* HD_NEWLINE)*
-      <isa HereDocID> HD_NEWLINE
-      #HereDocument
-    }*/
-
-HD_NEWLINE
-    = LINE_TERMINATOR_SEQUENCE
-
 
 ArrayLiteral
     [example: [1,2,3]]
@@ -299,11 +264,11 @@ HashLiteral
 
 
 LambdaExpression
-    = { '->' __ addLambdaParameter __ @[2]LambdaBody #Function }
+    = { '->' __ addLambdaParameter __ @LambdaBody #Function }
 
 addLambdaParameter
-    = '(' __ @[1]ParamOrEmptyList __ ')'
-    / @[1]ParamOrEmptyList
+    = '(' __ @ParamOrEmptyList __ ')'
+    / @ParamOrEmptyList
 
 ParamOrEmptyList
     = ParameterList / EmptyList
@@ -355,8 +320,8 @@ BraceBlockWithoutParameter
 
 PrimaryCallExpression
     [example: p (if false then 1 else 2 end)]
-    = { @[0]DummySelf @[1]OperationName _ @AddArguments #Apply }
-    / { @[0]DummySelf @[1]Super (_ @AddArguments)? #Apply }
+    = { @DummySelf @OperationName _ @AddArguments #Apply }
+    / { @DummySelf @Super (_ @AddArguments)? #Apply }
 
 Super
     = { "super" #Super }
@@ -402,14 +367,14 @@ THEN
 
 WhileExpression
     [example: while true do 1 end]
-    = { "while" _ <without DoEndBlock @Expression> _ DO __ @CompleteStatement __ "end" #While }
+    = { "while" _ @Expression _ DO __ @CompleteStatement __ "end" #While }
 
 DO
     = "do" / EOS (__ "do")?
 
 UntilExpression
     [example: until true do 1 end]
-    = { "until" _ <without DoEndBlock @Expression> _ DO __ @CompleteStatement __ "end" #Until }
+    = { "until" _ @Expression _ DO __ @CompleteStatement __ "end" #Until }
 
 CaseExpression
     [example: case n; when 1; a; end]
@@ -434,7 +399,7 @@ BeginExpression
     = { "begin" __ (EOS __)? addBeginBody __ "end" #Begin }
 
 addBeginBody
-    = @[0]CompleteStatement (__ EOS)? (__ @[1]RescueList)? (__ "else" EOS __ @[2]CompleteStatement)? (__ "ensure" __ @[3]CompleteStatement)?
+    = @CompleteStatement (__ EOS)? (__ @RescueList)? (__ "else" EOS __ @CompleteStatement)? (__ "ensure" __ @CompleteStatement)?
 
 RescueList
     = { (@RescueItem)+ (__ EOS)? #List }
@@ -446,7 +411,8 @@ RescueItem
     [example: rescue a; 1;]
     [example: rescue => b; 1;]
     [example: rescue a => b; 1;]
-    = { "rescue" _ (@[0]Args _)? ("=>" _ @[1]LeftHandSideExpression _)? THEN __ @[2]CompleteStatement #Rescue }
+    = { "rescue" _ (@Args _)? ("=>" _ @LeftHandSideExpression _)? THEN __ @CompleteStatement #Rescue }
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ClassExpression
     [example: class Human; end]
@@ -465,11 +431,11 @@ FunctionDefinition
     [example: def hoge() p a end]
     [example: def hoge(a,b) p a end]
     [example: def hoge(a,b); p a end]
-    = { "def" __ @[0]FunctionName _ addFunctionParameter __ @[2]FunctionBody __ "end" #Function }
+    = { "def" __ @FunctionName _ addFunctionParameter __ @FunctionBody __ "end" #Function }
 
 addFunctionParameter
-    = '(' __ @[1]ParamOrEmptyList __ ')' EOS?
-    / @[1]ParamOrEmptyList EOS
+    = '(' __ @ParamOrEmptyList __ ')' EOS?
+    / @ParamOrEmptyList EOS
 
 FunctionBody
     = { addBeginBody #Begin }
@@ -487,7 +453,7 @@ Singleton
     / '(' __ Expression __ ')'
 
 addLHSCall
-    = '[' __ (@[1]Args)? __ ']' #Indexer
+    = '[' __ (@Args)? __ ']' #Indexer
     /  _ addFuncName (_ @AddArguments &NEXT_CALL)? #Apply
 
 Args
@@ -547,23 +513,23 @@ OPERATOR
     / "<<" / ">>" / "~" / "`" / "+@" / "-@" / "[]" / "[]="
 
 addCmdArguments
-    = @[2]CmdArgs (_ @[3]BlockArgument)?
-    / @[3]BlockArgument
+    = @CmdArgs (_ @BlockArgument)?
+    / @BlockArgument
 
 CmdArgs
-    = !"(" <without DoEndBlock <without StatementAsPrimary CallArgs> >
+    = !"("  CallArgs
 
 DoEndBlock
     [example: do |n| p n end]
     [example: do |a,b| end]
-    = { "do" __ ("|" __ (@[0]BlockVar)? __ "|" __)? (@[1]CompleteStatement)? __ "end" #BlockArgument }
+    = { "do" __ ("|" __ (@BlockVar)? __ "|" __)? (@CompleteStatement)? __ "end" #BlockArgument }
 
 BlockVar
     = MultipleLeftHandSideExpression
     / { @LeftHandSideExpression #MultipleLeftHandSideExpression }
 
 BlockArgument
-    = <if DoEndBlock> DoEndBlock / BraceBlock
+    = DoEndBlock / BraceBlock
 
 
 BraceBlock
@@ -578,18 +544,18 @@ BeforeCommandFunctionCallExpression
     = { {@ @AddBeforeCommandCall }* }
 
 AddBeforeCommandCall
-    = { '[' __ (@[1]Args)? __ ']' #Indexer }
+    = { '[' __ (@Args)? __ ']' #Indexer }
     / { _ addFuncName (_ @AddArguments / &NEXT_CALL) #Apply }
 
 addFuncName
-    = '.' __ @[1]OperationName
-    / '.' __ @[1]IdentifierName
-    / '::' __ @[1]Identifier
-    / ('.' / '::') __ @[1]FunctionName
+    = '.' __ @OperationName
+    / '.' __ @IdentifierName
+    / '::' __ @Identifier
+    / ('.' / '::') __ @FunctionName
 
 AddArguments
-    = { '(' __ (@[2]CallArgs __)? ')' (__ @[3]BlockArgument)? }
-    / {  @[3]BlockArgument }
+    = { '(' __ (@CallArgs __)? ')' (__ @BlockArgument)? }
+    / {  @BlockArgument }
 
 CallArgs
     [example: 1,2,3,4]
@@ -601,7 +567,7 @@ CallArgs
     [bad-example: &b, *a]
     [bad-example: &b, 1]
     [bad-example: *a, 1]
-    = <without Decorator <without KeywordOperator CallArgsBody> >
+    = CallArgsBody
 
 CallArgsBody
     = { @Command #List }
@@ -694,11 +660,6 @@ BitwiseANDExpression
 ShiftExpression
     = AdditiveExpression {@ (SPACE+ "<<" SPACE_OR_NEWLINE+ #LeftShift / "<<" __ #LeftShift / _ ">>" __ #RightShift) @AdditiveExpression }*
 
-//AdditiveExpression = ' ' MultiplicativeExpression
-    //[example: a + 1]
-    //= { MultiplicativeExpression #aaa}
-    //{@ (SPACE+ addAdditiveOperator SPACE_OR_NEWLINE+ / addAdditiveOperator __) @MultiplicativeExpression }*
-
 AdditiveExpression
     [example: a + 1]
     = MultiplicativeExpression {@ (SPACE+ addAdditiveOperator SPACE_OR_NEWLINE+ / addAdditiveOperator __) @MultiplicativeExpression }*
@@ -737,10 +698,10 @@ addUnaryOperator
 FunctionCallExpression
     [example: 10.times do |n| p n end]
     [bad-example: 10.times 2 do |n| p n end]
-    = <with DoEndBlock PrimaryExpression>  {@ addCall }*
+    = PrimaryExpression  {@ addCall }*
 
 addCall
-    = '[' __ (@[1]Args)? __ ']' #Indexer
+    = '[' __ (@Args)? __ ']' #Indexer
     / _ addFuncName (_ @AddArguments)? #Apply
 
 NEXT_CALL
@@ -841,12 +802,12 @@ ExpandExpression
     = { '*' @Arg #Sprat }
 
 KeywordLogicalExpression
-    = KeywordNotExpression {@ <if KeywordOperator> __ addKeywordLogicalOperator __ @KeywordLogicalOperandWithControl #And }*
+    = KeywordNotExpression {@ __ addKeywordLogicalOperator __ @KeywordLogicalOperandWithControl #And }*
 
 KeywordNotExpression
-    = <with KeywordOperator CommandNotExpression>
-    / <with KeywordOperator AssignmentExpression>
-    / <if KeywordOperator> { __ "not" #Not _ @KeywordNotExpression }
+    = CommandNotExpression
+    / AssignmentExpression
+    / { __ "not" #Not _ @KeywordNotExpression }
 
 CommandNotExpression
     = Command / { __ "!" #Not _ @CommandNotExpression }
@@ -935,6 +896,7 @@ HEX
 "[]" = '[]'
 "[]=" = '[]='
 "(" = '('
+")" = ')'
 "=>" = '=>'
 "." = '.'
 "," = ','
@@ -981,3 +943,6 @@ HEX
 "then" = 'then' !W
 "true" = 'true' !W
 "undef" = 'undef' !W
+
+"BEGIN" = 'BEGIN' !W
+"END" = 'END' !W
