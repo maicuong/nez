@@ -24,3 +24,157 @@ ppred = PrimePredicater.new
 [1, 10, 2, 5, 7].each do |x|
   p ppred.prime?(x)
 end
+
+def eratosthenes_sieve(limit, &block)
+  return enum_for(__method__, limit) unless block_given?
+  primes = [2]
+  nums = (primes.last..limit).to_a
+  loop do
+    nums.delete_if{|x| x % primes.last == 0 }
+    break if nums.empty?
+    break if nums.last < primes.last ** 2
+    yield(nums.first)
+    primes << nums.first
+  end
+  nums.each(&block)
+end
+
+
+def eratosthenes_sieve(limit)
+  sq = (limit ** 0.5).to_i
+  is_prime = [false, false] + [true] * (limit-1)
+  2.upto(sq+1) { |i|
+    if is_prime[i]
+    (i*i).step(limit, i) { |j|
+      is_prime[j] = false
+    }
+    end
+  }
+  res = []
+  2.upto(limit) { |i|
+    res.push(i) if is_prime[i]
+  }
+  return res
+end
+
+puts eratosthenes_sieve(1e6.to_i). join(' ')
+
+
+#Usage: ruby hanoi.rb [n number of disc]
+
+class Hanoi
+  def initialize(n, h)
+    @height = n
+    @from   = h[:from] || "From"
+    @to     = h[:to]   || "To"
+    @work   = h[:work] || "Work"
+  end
+
+  attr_reader :height, :from, :to, :work
+
+  def each(&block)
+    do_hanoi @height, @from, @to, @work, &block
+  end
+
+  private
+
+  def do_hanoi(n, from, to, work, &block)
+    if n == 1
+      yield n, from, to
+    else
+      do_hanoi n - 1, from, work, to, &block
+      yield n, from, to
+      do_hanoi n - 1, work, to, from, &block
+    end
+  end
+end
+
+
+##使用例
+num = (ARGV[0] || 3).to_i
+num >= 0 or raise "#{num}: Invalid Number"
+hanoi = Hanoi.new(num, :from => "A", :to => "B", :work => "C")
+hanoi.each do |n, from, to|
+  puts "#{n}: #{from} -> #{to}"
+end
+
+#
+# * 4の倍数であれば閏年
+# * ただし、100の倍数でもある場合、
+#   400の倍数でもあるならば閏年
+#
+def leap_year?(y)
+  return false unless y % 4   == 0
+  return true  unless y % 100 == 0
+  y % 400 == 0
+end
+
+begin
+  ARGV[0] or raise 'missing year'
+  # Integer()は数値表現とは見えない文字列が与えられた場合、
+  # #to_iと違い、ArgumentErrorを発生させます。
+  y = Integer(ARGV[0])
+  y >= 0 or raise "invalid year: #{y}"
+  puts "#{y}: #{leap_year?(y)}"
+rescue => ex
+  # 例外を捕まえて、エラーメッセージと使い方を喋って終わる
+  me = File.basename($0, '.rb')
+  $stderr.puts "#{me}: #{ex}"
+  $stderr.puts "Usage: #{me} YEAR"
+end
+
+LEAP_YEAR_CHART = {
+  # x4?
+  true => {
+    # x100?
+    true => {
+      # x400?
+      true =>  true,
+      false => false,
+    },
+    false => {
+      true =>  true,
+      false => true,
+    }
+  },
+  false => {
+    true => {
+      true =>  false,
+      false => false,
+    },
+    false => {
+      true =>  false,
+      false => false,
+    }
+  }
+}
+
+def leap_year?(y, chart)
+  [4, 100, 400].inject(chart){|r, i| r[y % i == 0] }
+end
+
+begin
+  ARGV[0] or raise 'missing year'
+  y = Integer(ARGV[0])
+  y >= 0 or raise "invalid year: #{y}"
+  puts "#{y}: #{leap_year?(y, LEAP_YEAR_CHART)}"
+rescue => ex
+  me = File.basename($0, '.rb')
+  $stderr.puts "#{me}: #{ex}"
+  $stderr.puts "Usage: #{me} YEAR"
+end
+
+require 'matrix'
+
+def parse_matrix(src)
+  matrix = []
+  src.each do |line|
+    line.chomp!
+    next if line.empty?
+    matrix.push line.split(/\s+/).map{|x| x.to_i }
+  end
+  Matrix.rows(matrix)
+end
+
+m = parse_matrix(ARGF.read)
+puts m.transpose.to_a.map{|v| v.join(" ") }
